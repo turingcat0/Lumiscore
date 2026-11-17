@@ -1,0 +1,11 @@
+{
+  "name": "com.turingcat.lumiscore",
+  "displayName": "Lumiscore",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "A Timeline-first stage lighting authoring toolkit for Unity and VRChat.",
+  "author": {
+    "name": "turingcat"
+  },
+  "vpmDependencies": {}
+}
