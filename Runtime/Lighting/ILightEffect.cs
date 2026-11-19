@@ -5,6 +5,6 @@ namespace Lumiscore.Lighting
     public interface ILightEffect<TModule> : IStageEffect
         where TModule : class, ILightStateModule
     {
-        TModule Evaluate(LightEffectContext<TModule> context);
+        TModule Evaluate(LightEffectContext context);
     }
 }
