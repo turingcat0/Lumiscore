@@ -2,7 +2,10 @@
     "name": "Lumiscore.Editor",
     "rootNamespace": "Lumiscore.Editor",
     "references": [
-        "Lumiscore.Runtime"
+        "Lumiscore.Runtime",
+        "Lumiscore.Timeline",
+        "Unity.Timeline",
+        "Unity.Timeline.Editor"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,16 +1,28 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
+    [Serializable]
     public class LightGroupNode : LightNodeBase
     {
-        private readonly List<ILightNode> _children = new List<ILightNode>();
+        [SerializeReference] private ILightLayout _layout;
+        [SerializeReference] private List<ILightNode> _children = new List<ILightNode>();
 
-        public ILightLayout Layout { get; set; }
+        public ILightLayout Layout
+        {
+            get => _layout;
+            set => _layout = value;
+        }
+
         public IReadOnlyList<ILightNode> Children => _children;
 
-        public LightGroupNode(string name = null, string id = null, Transform rootTransform = null)
+        public LightGroupNode()
+        {
+        }
+
+        public LightGroupNode(string name, string id = null, Transform rootTransform = null)
             : base(name, id, rootTransform)
         {
         }

@@ -1,16 +1,28 @@
+using System;
 using Lumiscore.Core;
 using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
+    [Serializable]
     public abstract class LightNodeBase : StageNodeBase, ILightNode
     {
-        public Transform RootTransform { get; set; }
+        [NonSerialized] private Transform _rootTransform;
 
-        protected LightNodeBase(string name = null, string id = null, Transform rootTransform = null)
+        public Transform RootTransform
+        {
+            get => _rootTransform;
+            set => _rootTransform = value;
+        }
+
+        protected LightNodeBase()
+        {
+        }
+
+        protected LightNodeBase(string name, string id = null, Transform rootTransform = null)
             : base(name, id)
         {
-            RootTransform = rootTransform;
+            _rootTransform = rootTransform;
         }
     }
 }

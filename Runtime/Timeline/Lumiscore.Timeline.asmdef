@@ -1,0 +1,17 @@
+{
+    "name": "Lumiscore.Timeline",
+    "rootNamespace": "Lumiscore.Timeline",
+    "references": [
+        "Lumiscore.Runtime",
+        "Unity.Timeline"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
