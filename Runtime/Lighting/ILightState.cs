@@ -6,6 +6,7 @@ namespace Lumiscore.Lighting
     {
         TModule GetModule<TModule>() where TModule : class, ILightStateModule;
         void SetModule<TModule>(TModule module) where TModule : class, ILightStateModule;
+        ILightState Clone();
     }
 
     public interface IHasLightModule<TModule> : ILightState
