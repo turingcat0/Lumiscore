@@ -8,6 +8,10 @@ using UnityEditor;
 
 namespace Lumiscore.Core
 {
+    /// <summary>
+    /// Auto-discovers concrete modules, effects, and 1-to-1 module mixers using Unity's <c>TypeCache</c>
+    /// in the Editor and a filtered assembly scan fallback at runtime.
+    /// </summary>
     public static class StageTypeRegistry
     {
         private static bool s_Initialized;

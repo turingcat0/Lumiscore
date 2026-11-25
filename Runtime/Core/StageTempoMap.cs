@@ -3,6 +3,10 @@ using UnityEngine;
 
 namespace Lumiscore.Core
 {
+    /// <summary>
+    /// Projects absolute show time (seconds) into musical beats for rhythmic effects.
+    /// Clips and Timeline remain stored in seconds; effects read beat values from evaluation context.
+    /// </summary>
     [Serializable]
     public class StageTempoMap
     {

@@ -7,6 +7,10 @@ using UnityEditor;
 
 namespace Lumiscore.Editor
 {
+    /// <summary>
+    /// Editor-only session manager that keeps preview snapshots, lossless scene restoration,
+    /// and layout application isolated from runtime <see cref="StageController"/> code.
+    /// </summary>
     [InitializeOnLoad]
     public static class StageEditorSession
     {

@@ -6,6 +6,10 @@ using UnityEngine;
 
 namespace Lumiscore.Core
 {
+    /// <summary>
+    /// Non-generic serializable base class for all stage effects stored under <c>[SerializeReference]</c>.
+    /// Concrete subclasses must be non-generic and marked <see cref="SerializableAttribute"/>.
+    /// </summary>
     [Serializable]
     public abstract class StageEffectBase
     {
@@ -13,6 +17,10 @@ namespace Lumiscore.Core
 
         public StagePresetManager Presets => _presets;
 
+        /// <summary>
+        /// Deep-clones this effect for clip duplication (e.g., Ctrl+D in Timeline) via reflection,
+        /// preserving <see cref="UnityEngine.Object"/> references while cloning arrays, curves, and gradients.
+        /// </summary>
         public virtual StageEffectBase Clone()
         {
             var visited = new Dictionary<object, object>(ReferenceEqualityComparer.Instance);
@@ -73,7 +81,7 @@ namespace Lumiscore.Core
             }
 
             object clone = type.IsValueType
-                ? source
+                ? Activator.CreateInstance(type)
                 : FormatterServices.GetUninitializedObject(type);
 
             if (!type.IsValueType)

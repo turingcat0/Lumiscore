@@ -4,6 +4,10 @@ using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
+    /// <summary>
+    /// Composite lighting node that owns child nodes and an optional <see cref="ILightLayout"/>.
+    /// Tracks attached to a group always evaluate across its direct <see cref="Children"/>.
+    /// </summary>
     [Serializable]
     public class LightGroupNode : LightNodeBase, ISerializationCallbackReceiver
     {
@@ -79,6 +83,10 @@ namespace Lumiscore.Lighting
             }
         }
 
+        /// <summary>
+        /// Wraps a single <see cref="LightLeafNode"/> in a 1-child group so single-light override tracks
+        /// follow the exact same child-evaluation pipeline as multi-light groups.
+        /// </summary>
         public static LightGroupNode WrapSingleLight(LightLeafNode leaf, string wrapperName = null)
         {
             if (leaf == null)

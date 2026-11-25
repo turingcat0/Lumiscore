@@ -4,6 +4,11 @@ using UnityEngine;
 
 namespace Lumiscore.Core
 {
+    /// <summary>
+    /// Root authoring and runtime data model for a single show/song.
+    /// Serializes tracks through private non-generic DTOs to satisfy Unity's <c>[SerializeReference]</c>
+    /// constraints while exposing strongly-typed tracks and an O(1) node-to-tracks index in memory.
+    /// </summary>
     [Serializable]
     public class StageShow : ISerializationCallbackReceiver
     {

@@ -5,6 +5,10 @@ using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
+    /// <summary>
+    /// Base class for all lighting hierarchy nodes inside a <see cref="StageShow"/>.
+    /// Intentionally excludes fixture state type metadata; scene bindings own node-to-state mapping.
+    /// </summary>
     [Serializable]
     public abstract class LightNodeBase : StageNodeBase
     {

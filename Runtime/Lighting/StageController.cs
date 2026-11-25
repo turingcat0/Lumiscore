@@ -50,6 +50,11 @@ namespace Lumiscore.Lighting
         }
     }
 
+    /// <summary>
+    /// Scene-root runtime controller that maps show nodes to scene transforms/drivers, pre-allocates
+    /// per-node <see cref="ILightState"/> buffers for zero-GC top-down evaluation, and deduplicates
+    /// per-frame Timeline <c>ProcessFrame</c> calls.
+    /// </summary>
     public class StageController : MonoBehaviour
     {
         private sealed class NodeEvalBuffers
