@@ -8,64 +8,61 @@ using UnityEditor;
 namespace Lumiscore.Editor
 {
     /// <summary>
-    /// Editor-only session manager that keeps preview snapshots, lossless scene restoration,
-    /// and layout application isolated from runtime <see cref="StageController"/> code.
+    /// Editor-only session manager that tracks active EditMode previews, triggers non-serialized
+    /// preview cleanup (<see cref="StageDriverBase.ResetPreview"/>) on exit/reload, and dispatches
+    /// layout application — keeping runtime <see cref="StageController"/> free of editor state.
     /// </summary>
     [InitializeOnLoad]
     public static class StageEditorSession
     {
-        private static readonly Dictionary<StageController, Dictionary<string, IStageState>> s_CapturedSnapshots =
-            new Dictionary<StageController, Dictionary<string, IStageState>>();
+        private static readonly HashSet<StageController> s_ActivePreviews = new HashSet<StageController>();
 
         static StageEditorSession()
         {
             StageController.AnyPreviewStarted += HandlePreviewStarted;
             StageController.AnyPreviewStopped += HandlePreviewStopped;
-            AssemblyReloadEvents.beforeAssemblyReload += RestoreAll;
+            AssemblyReloadEvents.beforeAssemblyReload += ResetAll;
             EditorApplication.playModeStateChanged += HandlePlayModeStateChanged;
-            EditorApplication.quitting += RestoreAll;
+            EditorApplication.quitting += ResetAll;
         }
 
         public static bool IsPreviewing(StageController controller)
-            => controller != null && s_CapturedSnapshots.ContainsKey(controller);
+            => controller != null && s_ActivePreviews.Contains(controller);
 
         public static void BeginPreview(StageController controller)
         {
-            if (controller == null || s_CapturedSnapshots.ContainsKey(controller))
+            if (controller != null)
             {
-                return;
+                s_ActivePreviews.Add(controller);
             }
-
-            var snapshot = new Dictionary<string, IStageState>();
-            controller.CaptureAllBoundStates(snapshot);
-            s_CapturedSnapshots[controller] = snapshot;
         }
 
         public static void EndPreview(StageController controller)
         {
-            if (controller == null || !s_CapturedSnapshots.TryGetValue(controller, out Dictionary<string, IStageState> snapshot))
+            if (controller == null || !s_ActivePreviews.Remove(controller))
             {
                 return;
             }
 
-            s_CapturedSnapshots.Remove(controller);
-            controller.ApplyCapturedStates(snapshot);
+            controller.ResetAllPreviews();
         }
 
-        public static void RestoreAll()
+        public static void ResetAll()
         {
-            if (s_CapturedSnapshots.Count == 0)
+            if (s_ActivePreviews.Count == 0)
             {
                 return;
             }
 
-            var controllers = new List<StageController>(s_CapturedSnapshots.Keys);
+            var controllers = new List<StageController>(s_ActivePreviews);
+            s_ActivePreviews.Clear();
             for (int i = 0; i < controllers.Count; i++)
             {
-                EndPreview(controllers[i]);
+                if (controllers[i] != null)
+                {
+                    controllers[i].ResetAllPreviews();
+                }
             }
-
-            s_CapturedSnapshots.Clear();
         }
 
         public static bool ApplyLayout(LightNodeBase node)
@@ -108,7 +105,7 @@ namespace Lumiscore.Editor
         {
             if (change == PlayModeStateChange.ExitingEditMode)
             {
-                RestoreAll();
+                ResetAll();
             }
         }
     }

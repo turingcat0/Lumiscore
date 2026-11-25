@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using Lumiscore.Core;
 using Lumiscore.Editor;
 using Lumiscore.Lighting;
+using Lumiscore.Timeline;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Timeline;
 
 namespace Lumiscore.Tests.Editor
 {
@@ -49,17 +51,11 @@ namespace Lumiscore.Tests.Editor
         }
     }
 
+    [Serializable]
     public sealed class MockEvalLightDriver : LightDriverBase<EvalLightState>
     {
         public float CurrentIntensity = 7.5f;
-
-        public override EvalLightState CaptureState()
-        {
-            return new EvalLightState
-            {
-                Intensity = new EvalIntensityModule { Value = CurrentIntensity }
-            };
-        }
+        public bool ResetPreviewCalled;
 
         public override void ApplyState(EvalLightState state)
         {
@@ -67,6 +63,32 @@ namespace Lumiscore.Tests.Editor
             {
                 CurrentIntensity = state.Intensity.Value;
             }
+        }
+
+        public override void ResetPreview(GameObject fixtureRoot)
+        {
+            ResetPreviewCalled = true;
+            CurrentIntensity = 0f;
+        }
+    }
+
+    internal sealed class MockPropertyCollector : IStagePropertyCollector
+    {
+        public readonly List<Component> CollectedComponents = new List<Component>();
+
+        public void AddComponent(Component component)
+        {
+            if (component != null) CollectedComponents.Add(component);
+        }
+
+        public void AddProperty<TComponent>(GameObject target, string propertyName) where TComponent : Component
+        {
+        }
+
+        public void AddTransformsInChildren(GameObject root)
+        {
+            if (root == null) return;
+            CollectedComponents.AddRange(root.GetComponentsInChildren<Transform>(true));
         }
     }
 
@@ -190,76 +212,133 @@ namespace Lumiscore.Tests.Editor
         }
 
         [Test]
-        public void StageController_TopDownUniformChildrenEvaluation_PreviewCaptureAndRestore()
+        public void StageSceneSync_And_StageController_EndToEndLoop()
         {
             var showAsset = ScriptableObject.CreateInstance<StageShowAsset>();
+            var timelineAsset = ScriptableObject.CreateInstance<TimelineAsset>();
             StageShow show = showAsset.Show;
             show.TempoMap.Bpm = 120f; // 2 beats per second
 
-            var root = new LightGroupNode("AllStage");
-            var leftWing = new LightGroupNode("LeftWing");
-            var rightWing = new LightGroupNode("RightWing");
-
-            var l1 = new LightLeafNode("L1");
-            var l2 = new LightLeafNode("L2");
-            var r1Leaf = new LightLeafNode("R1_Leaf");
-            var r1Wrapper = LightGroupNode.WrapSingleLight(r1Leaf, "R1");
-
-            leftWing.AddChild(l1);
-            leftWing.AddChild(l2);
-            rightWing.AddChild(r1Wrapper);
-            root.AddChild(leftWing);
-            root.AddChild(rightWing);
-            show.AddRootNode(root);
-
-            Assert.AreEqual(0, l1.Index);
-            Assert.AreEqual(2, l1.Count);
-            Assert.AreEqual(1, l2.Index);
-            Assert.AreEqual(2, l2.Count);
-            Assert.AreEqual(0, r1Leaf.Index);
-            Assert.AreEqual(1, r1Leaf.Count);
-
-            // Root track: sibling 0 (LeftWing) = 10, sibling 1 (RightWing) = 20
-            var rootTrack = new LightTrack<EvalIntensityModule>(root);
-            var rootClip = (LightClip<EvalIntensityModule>)rootTrack.CreateClip(0f, 10f);
-            rootClip.EaseInDuration = 2f;
-            rootClip.EaseOutDuration = 2f;
-            rootClip.Effect = new SiblingRampEffect { BaseValue = 10f, StepPerSibling = 10f };
-            show.AddTrack(rootTrack);
-
-            // LeftWing additive track: sibling 0 (L1) += 1, sibling 1 (L2) += 2
-            var leftTrack = new LightTrack<EvalIntensityModule>(leftWing);
-            var leftClip = (LightClip<EvalIntensityModule>)leftTrack.CreateClip(2f, 8f);
-            leftClip.BlendMode = StageBlendMode.Additive;
-            leftClip.Weight = 1f;
-            leftClip.Effect = new SiblingRampEffect { BaseValue = 1f, StepPerSibling = 1f };
-            show.AddTrack(leftTrack);
-
             var rootGo = new GameObject("StageRoot");
+            var allStageGo = new GameObject("AllStage");
+            var leftWingGo = new GameObject("LeftWing");
+            var rightWingGo = new GameObject("RightWing");
             var l1Go = new GameObject("L1");
             var l2Go = new GameObject("L2");
             var r1Go = new GameObject("R1");
 
+            allStageGo.transform.SetParent(rootGo.transform);
+            leftWingGo.transform.SetParent(allStageGo.transform);
+            rightWingGo.transform.SetParent(allStageGo.transform);
+            l1Go.transform.SetParent(leftWingGo.transform);
+            l2Go.transform.SetParent(leftWingGo.transform);
+            r1Go.transform.SetParent(rightWingGo.transform);
+
             try
             {
                 var controller = rootGo.AddComponent<StageController>();
-                var dL1 = l1Go.AddComponent<MockEvalLightDriver>();
-                var dL2 = l2Go.AddComponent<MockEvalLightDriver>();
-                var dR1 = r1Go.AddComponent<MockEvalLightDriver>();
-                dL1.CurrentIntensity = 7.5f;
-                dL2.CurrentIntensity = 8.5f;
-                dR1.CurrentIntensity = 9.5f;
-
                 controller.ShowAsset = showAsset;
-                controller.BindNode(l1.Id, l1Go.transform, dL1);
-                controller.BindNode(l2.Id, l2Go.transform, dL2);
-                controller.BindNode(r1Leaf.Id, r1Go.transform, dR1);
 
-                // Begin editor preview session -> captures initial driver states
+                allStageGo.AddComponent<LightGroup>();
+                leftWingGo.AddComponent<LightGroup>();
+                rightWingGo.AddComponent<LightGroup>();
+
+                var dL1 = new MockEvalLightDriver { CurrentIntensity = 7.5f };
+                var dL2 = new MockEvalLightDriver { CurrentIntensity = 8.5f };
+                var dR1 = new MockEvalLightDriver { CurrentIntensity = 9.5f };
+
+                var fL1 = l1Go.AddComponent<LightFixture>();
+                fL1.Driver = dL1;
+                var fL2 = l2Go.AddComponent<LightFixture>();
+                fL2.Driver = dL2;
+                var fR1 = r1Go.AddComponent<LightFixture>();
+                fR1.Driver = dR1;
+
+                // 1. Sync scene hierarchy into StageShow (with individual light wrapping enabled)
+                StageSceneSync.SyncTopologyFromScene(controller, wrapIndividualLights: true);
+                Assert.AreEqual(1, show.RootNodes.Count);
+                var rootGroup = show.RootNodes[0] as LightGroupNode;
+                Assert.IsNotNull(rootGroup);
+                Assert.AreEqual(2, rootGroup.Children.Count);
+
+                var leftWing = rootGroup.Children[0] as LightGroupNode;
+                var rightWing = rootGroup.Children[1] as LightGroupNode;
+                Assert.IsNotNull(leftWing);
+                Assert.IsNotNull(rightWing);
+                Assert.AreEqual(2, leftWing.Children.Count);
+                Assert.AreEqual(1, rightWing.Children.Count);
+
+                var r1Wrapper = rightWing.Children[0] as LightGroupNode;
+                Assert.IsNotNull(r1Wrapper);
+                var r1Leaf = r1Wrapper.Children[0] as LightLeafNode;
+                Assert.IsNotNull(r1Leaf);
+                Assert.AreSame(fR1, r1Leaf.Fixture);
+
+                // 2. Auto-generate LightTrack<TModule> for all groups from EvalLightState's IHasLightModule<>
+                StageSceneSync.EnsureTracksForAllGroups(controller);
+                var rootTrack = show.GetTracks(rootGroup)[0] as LightTrack<EvalIntensityModule>;
+                var leftTrack = show.GetTracks(leftWing)[0] as LightTrack<EvalIntensityModule>;
+                var r1Track = show.GetTracks(r1Wrapper)[0] as LightTrack<EvalIntensityModule>;
+                Assert.IsNotNull(rootTrack);
+                Assert.IsNotNull(leftTrack);
+                Assert.IsNotNull(r1Track);
+
+                // Add clips to generated tracks
+                var rootClip = (LightClip<EvalIntensityModule>)rootTrack.CreateClip(0f, 10f);
+                rootClip.EaseInDuration = 2f;
+                rootClip.EaseOutDuration = 2f;
+                rootClip.Effect = new SiblingRampEffect { BaseValue = 10f, StepPerSibling = 10f };
+
+                var leftClip = (LightClip<EvalIntensityModule>)leftTrack.CreateClip(2f, 8f);
+                leftClip.BlendMode = StageBlendMode.Additive;
+                leftClip.Weight = 1f;
+                leftClip.Effect = new SiblingRampEffect { BaseValue = 1f, StepPerSibling = 1f };
+
+                // 3. Auto-build nested Timeline GroupTracks + StageTrackAssets
+                StageSceneSync.SyncHierarchyToTimeline(showAsset, timelineAsset);
+                int rootGroupTrackCount = 0;
+                GroupTrack timelineAllStage = null;
+                foreach (TrackAsset t in timelineAsset.GetRootTracks())
+                {
+                    if (t is GroupTrack gt && gt.name == "AllStage")
+                    {
+                        rootGroupTrackCount++;
+                        timelineAllStage = gt;
+                    }
+                }
+
+                Assert.AreEqual(1, rootGroupTrackCount);
+                Assert.IsNotNull(timelineAllStage);
+
+                int childGroups = 0;
+                int childStageTracks = 0;
+                foreach (TrackAsset child in timelineAllStage.GetChildTracks())
+                {
+                    if (child is GroupTrack) childGroups++;
+                    if (child is StageTrackAsset) childStageTracks++;
+                }
+
+                Assert.AreEqual(2, childGroups, "AllStage GroupTrack should contain LeftWing and RightWing GroupTracks.");
+                Assert.AreEqual(1, childStageTracks, "AllStage GroupTrack should contain 1 EvalIntensityModule StageTrackAsset.");
+
+                // 4. Resync after renaming preserves existing node identity and tracks
+                allStageGo.name = "AllStage_Renamed";
+                StageSceneSync.SyncTopologyFromScene(controller, wrapIndividualLights: true);
+                Assert.AreSame(rootGroup, show.RootNodes[0], "Resync must reuse existing LightGroupNode by NodeId.");
+                Assert.AreEqual("AllStage_Renamed", rootGroup.Name);
+                Assert.AreEqual(1, show.GetTracks(rootGroup).Count, "Existing tracks must survive topology resync.");
+
+                // 5. GatherPreviewProperties -> Preview Evaluate -> ResetPreview cleanup
+                var collector = new MockPropertyCollector();
+                controller.GatherAllPreviewProperties(collector);
+                Assert.IsTrue(collector.CollectedComponents.Contains(l1Go.transform));
+                Assert.IsTrue(collector.CollectedComponents.Contains(l2Go.transform));
+                Assert.IsTrue(collector.CollectedComponents.Contains(r1Go.transform));
+
                 StageEditorSession.BeginPreview(controller);
                 Assert.IsTrue(StageEditorSession.IsPreviewing(controller));
 
-                // t = 1.0s -> root EaseIn (50%), leftTrack inactive
+                // t = 1.0s -> root EaseIn (50%)
                 controller.EvaluateAt(1f);
                 Assert.AreEqual(5f, dL1.CurrentIntensity, 1e-4f);
                 Assert.AreEqual(5f, dL2.CurrentIntensity, 1e-4f);
@@ -271,31 +350,25 @@ namespace Lumiscore.Tests.Editor
                 Assert.AreEqual(12f, dL2.CurrentIntensity, 1e-4f);
                 Assert.AreEqual(20f, dR1.CurrentIntensity, 1e-4f);
 
-                // Single-light override track attached to r1Wrapper (Count == 1) with Crossfade + TempoMap
-                var r1Track = new LightTrack<EvalIntensityModule>(r1Wrapper);
+                // Crossfade + TempoMap on single-light r1Wrapper
                 var clipA = (LightClip<EvalIntensityModule>)r1Track.CreateClip(0f, 4f);
                 clipA.Effect = new SiblingRampEffect { BaseValue = 100f, StepPerSibling = 0f };
                 var clipB = (LightClip<EvalIntensityModule>)r1Track.CreateClip(2f, 6f);
                 clipB.Effect = new BeatConstantEffect { Scale = 10f }; // at t=3s -> elapsed 1s = 2 beats -> 20
-                show.AddTrack(r1Track);
-
-                // t = 3.0s -> overlap [2, 4] at 50% => Lerp(100, 20, 0.5) = 60
                 controller.EvaluateAt(3f);
                 Assert.AreEqual(60f, dR1.CurrentIntensity, 1e-4f);
 
-                // End editor preview session -> restores initial captured states losslessly
+                // End preview -> invokes ResetPreview on all bound fixture drivers
                 StageEditorSession.EndPreview(controller);
                 Assert.IsFalse(StageEditorSession.IsPreviewing(controller));
-                Assert.AreEqual(7.5f, dL1.CurrentIntensity, 1e-4f);
-                Assert.AreEqual(8.5f, dL2.CurrentIntensity, 1e-4f);
-                Assert.AreEqual(9.5f, dR1.CurrentIntensity, 1e-4f);
+                Assert.IsTrue(dL1.ResetPreviewCalled);
+                Assert.IsTrue(dL2.ResetPreviewCalled);
+                Assert.IsTrue(dR1.ResetPreviewCalled);
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(r1Go);
-                UnityEngine.Object.DestroyImmediate(l2Go);
-                UnityEngine.Object.DestroyImmediate(l1Go);
                 UnityEngine.Object.DestroyImmediate(rootGo);
+                UnityEngine.Object.DestroyImmediate(timelineAsset);
                 UnityEngine.Object.DestroyImmediate(showAsset);
             }
         }

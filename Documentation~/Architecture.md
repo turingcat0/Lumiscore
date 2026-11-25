@@ -52,7 +52,7 @@ StageNodeBase (Core abstract: Id, Name)
 - **Every track evaluates its node's `Children`, never the node itself.**
   - A group track on a `LightGroupNode` evaluates across its direct children (`Count = N`, each child carrying its `Index` and sibling `Count`), then passes each child's resulting `ILightState` down the subtree.
   - A single-light override is modeled uniformly by wrapping a `LightLeafNode` in a 1-child `LightGroupNode` (`LightGroupNode.WrapSingleLight`). There are zero `if (node is LightGroupNode)` branches in the evaluation loop.
-  - Recursion terminates when `node.Children.Count == 0` (`LightLeafNode`), flushing the final `ILightState` to the bound `IStageDriver`.
+  - Recursion terminates when `node.Children.Count == 0` (`LightLeafNode`), flushing the final `ILightState` to the bound `StageDriverBase`.
 - **Homogeneous `TState` per light tree.**
   - Each root light tree represents one fixture state type (e.g., moving heads vs. lasers live in separate root trees). `LightNodeBase` intentionally does **not** carry `TState` metadata; scene bindings / `StageController` own the node-to-`TState` and driver mapping.
 - **Zero-GC hot loop.**
@@ -94,7 +94,8 @@ StageNodeBase (Core abstract: Id, Name)
   - `StageShowEditService` wraps programmatic edits in unified Undo groups.
 - **Single-evaluation preview loop**:
   - `StageTrackMixer.ProcessFrame` forwards `(timelineTime, info.frameId)` to `StageController.EvaluateFrame`, deduplicating multiple tracks so the show evaluates exactly once per frame in both EditMode scrubbing and PlayMode.
-  - `StageEditorSession` listens to `StageController.AnyPreviewStarted` / `AnyPreviewStopped` to capture initial driver states (`CaptureState`) and restore them losslessly on stop, assembly reload, or PlayMode entry.
+  - Serialized scene property restoration in EditMode preview is delegated to Unity Timeline's native `IPropertyCollector` via `StageTrackAsset.GatherProperties` → `StageDriverBase.GatherPreviewProperties(fixtureRoot, IStagePropertyCollector)` (defaulting to child `Transform`s and `Light`s, overridable per driver).
+  - `StageEditorSession` listens to `StageController.AnyPreviewStarted` / `AnyPreviewStopped` to invoke optional `StageDriverBase.ResetPreview` for non-serialized runtime render state (such as `MaterialPropertyBlock`) on stop, assembly reload, or PlayMode entry.
 
 ---
 

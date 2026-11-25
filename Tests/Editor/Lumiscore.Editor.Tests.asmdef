@@ -5,6 +5,7 @@
         "Lumiscore.Runtime",
         "Lumiscore.Timeline",
         "Lumiscore.Editor",
+        "Unity.Timeline",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

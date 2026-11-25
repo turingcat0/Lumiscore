@@ -5,53 +5,9 @@ using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
-    [Serializable]
-    public sealed class StageNodeBinding
-    {
-        [SerializeField] private string _nodeId;
-        [SerializeField] private Transform _rootTransform;
-        [SerializeField] private MonoBehaviour _driverComponent;
-        [SerializeField] private string _stateTypeName;
-
-        public string NodeId
-        {
-            get => _nodeId;
-            set => _nodeId = value ?? string.Empty;
-        }
-
-        public Transform RootTransform
-        {
-            get => _rootTransform;
-            set => _rootTransform = value;
-        }
-
-        public MonoBehaviour DriverComponent
-        {
-            get => _driverComponent;
-            set => _driverComponent = value;
-        }
-
-        public IStageDriver Driver => _driverComponent as IStageDriver;
-
-        public string StateTypeName
-        {
-            get => _stateTypeName;
-            set => _stateTypeName = value ?? string.Empty;
-        }
-
-        public Type ResolveStateType()
-        {
-            if (Driver != null && Driver.StateType != null)
-            {
-                return Driver.StateType;
-            }
-
-            return string.IsNullOrEmpty(_stateTypeName) ? null : Type.GetType(_stateTypeName);
-        }
-    }
-
     /// <summary>
-    /// Scene-root runtime controller that maps show nodes to scene transforms/drivers, pre-allocates
+    /// Scene-root runtime controller that binds <see cref="StageShow"/> nodes to scene
+    /// <see cref="LightGroup"/> / <see cref="LightFixture"/> components, pre-allocates
     /// per-node <see cref="ILightState"/> buffers for zero-GC top-down evaluation, and deduplicates
     /// per-frame Timeline <c>ProcessFrame</c> calls.
     /// </summary>
@@ -75,9 +31,7 @@ namespace Lumiscore.Lighting
         }
 
         [SerializeField] private StageShowAsset _showAsset;
-        [SerializeField] private List<StageNodeBinding> _bindings = new List<StageNodeBinding>();
 
-        private readonly Dictionary<string, StageNodeBinding> _bindingLookup = new Dictionary<string, StageNodeBinding>();
         private readonly Dictionary<LightNodeBase, ILightState> _rootStates = new Dictionary<LightNodeBase, ILightState>();
         private readonly Dictionary<LightNodeBase, NodeEvalBuffers> _nodeBuffers = new Dictionary<LightNodeBase, NodeEvalBuffers>();
 
@@ -102,55 +56,11 @@ namespace Lumiscore.Lighting
             }
         }
 
-        public IReadOnlyList<StageNodeBinding> Bindings => _bindings;
-
         public void InvalidateCache()
         {
             _cacheDirty = true;
             _lastFrameId = ulong.MaxValue;
             _lastEvaluatedTime = float.NaN;
-        }
-
-        public void BindNode(string nodeId, Transform rootTransform, MonoBehaviour driverComponent = null, Type stateType = null)
-        {
-            if (string.IsNullOrEmpty(nodeId))
-            {
-                return;
-            }
-
-            StageNodeBinding existing = FindBinding(nodeId);
-            if (existing == null)
-            {
-                existing = new StageNodeBinding { NodeId = nodeId };
-                _bindings.Add(existing);
-            }
-
-            existing.RootTransform = rootTransform;
-            existing.DriverComponent = driverComponent;
-            if (stateType != null)
-            {
-                existing.StateTypeName = stateType.AssemblyQualifiedName;
-            }
-
-            InvalidateCache();
-        }
-
-        public StageNodeBinding FindBinding(string nodeId)
-        {
-            if (string.IsNullOrEmpty(nodeId))
-            {
-                return null;
-            }
-
-            for (int i = 0; i < _bindings.Count; i++)
-            {
-                if (_bindings[i] != null && _bindings[i].NodeId == nodeId)
-                {
-                    return _bindings[i];
-                }
-            }
-
-            return null;
         }
 
         public void NotifyGraphStart()
@@ -176,39 +86,33 @@ namespace Lumiscore.Lighting
             }
         }
 
-        public void CaptureAllBoundStates(Dictionary<string, IStageState> target)
+        public void GatherAllPreviewProperties(IStagePropertyCollector collector)
         {
-            if (target == null)
+            if (collector == null)
             {
                 return;
             }
 
-            target.Clear();
-            for (int i = 0; i < _bindings.Count; i++)
+            LightFixture[] fixtures = GetComponentsInChildren<LightFixture>(true);
+            for (int i = 0; i < fixtures.Length; i++)
             {
-                StageNodeBinding binding = _bindings[i];
-                if (binding == null || string.IsNullOrEmpty(binding.NodeId) || binding.Driver == null)
+                LightFixture fixture = fixtures[i];
+                if (fixture != null && fixture.Driver != null)
                 {
-                    continue;
+                    fixture.Driver.GatherPreviewProperties(fixture.gameObject, collector);
                 }
-
-                target[binding.NodeId] = binding.Driver.CaptureState();
             }
         }
 
-        public void ApplyCapturedStates(IReadOnlyDictionary<string, IStageState> snapshot)
+        public void ResetAllPreviews()
         {
-            if (snapshot == null)
+            LightFixture[] fixtures = GetComponentsInChildren<LightFixture>(true);
+            for (int i = 0; i < fixtures.Length; i++)
             {
-                return;
-            }
-
-            foreach (KeyValuePair<string, IStageState> pair in snapshot)
-            {
-                StageNodeBinding binding = FindBinding(pair.Key);
-                if (binding?.Driver != null && pair.Value != null)
+                LightFixture fixture = fixtures[i];
+                if (fixture != null && fixture.Driver != null)
                 {
-                    binding.Driver.ApplyState(pair.Value);
+                    fixture.Driver.ResetPreview(fixture.gameObject);
                 }
             }
         }
@@ -259,23 +163,33 @@ namespace Lumiscore.Lighting
         public void RebuildEvaluationCache(StageShow show = null)
         {
             _cacheDirty = false;
-            _bindingLookup.Clear();
             _rootStates.Clear();
             _nodeBuffers.Clear();
-
-            for (int i = 0; i < _bindings.Count; i++)
-            {
-                StageNodeBinding binding = _bindings[i];
-                if (binding != null && !string.IsNullOrEmpty(binding.NodeId))
-                {
-                    _bindingLookup[binding.NodeId] = binding;
-                }
-            }
 
             StageShow targetShow = show ?? (_showAsset != null ? _showAsset.Show : null);
             if (targetShow == null)
             {
                 return;
+            }
+
+            var groupsById = new Dictionary<string, LightGroup>();
+            LightGroup[] groups = GetComponentsInChildren<LightGroup>(true);
+            for (int i = 0; i < groups.Length; i++)
+            {
+                if (groups[i] != null)
+                {
+                    groupsById[groups[i].NodeId] = groups[i];
+                }
+            }
+
+            var fixturesById = new Dictionary<string, LightFixture>();
+            LightFixture[] fixtures = GetComponentsInChildren<LightFixture>(true);
+            for (int i = 0; i < fixtures.Length; i++)
+            {
+                if (fixtures[i] != null)
+                {
+                    fixturesById[fixtures[i].NodeId] = fixtures[i];
+                }
             }
 
             IReadOnlyList<IStageNode> roots = targetShow.RootNodes;
@@ -285,6 +199,8 @@ namespace Lumiscore.Lighting
                 {
                     continue;
                 }
+
+                InjectSceneReferences(rootLightNode, groupsById, fixturesById);
 
                 Type stateType = ResolveTreeStateType(rootLightNode);
                 if (stateType == null || !typeof(ILightState).IsAssignableFrom(stateType))
@@ -298,16 +214,46 @@ namespace Lumiscore.Lighting
             }
         }
 
-        private void AllocateSubtreeBuffers(LightNodeBase node, Func<ILightState> stateFactory)
+        private static void InjectSceneReferences(
+            LightNodeBase node,
+            Dictionary<string, LightGroup> groupsById,
+            Dictionary<string, LightFixture> fixturesById)
         {
             if (node == null)
             {
                 return;
             }
 
-            if (_bindingLookup.TryGetValue(node.Id, out StageNodeBinding binding) && binding.RootTransform != null)
+            if (node is LightLeafNode leaf)
             {
-                node.RootTransform = binding.RootTransform;
+                if (fixturesById.TryGetValue(leaf.Id, out LightFixture fixture))
+                {
+                    leaf.Fixture = fixture;
+                    leaf.RootTransform = fixture.transform;
+                }
+            }
+            else if (groupsById.TryGetValue(node.Id, out LightGroup group))
+            {
+                node.RootTransform = group.transform;
+            }
+
+            IReadOnlyList<LightNodeBase> children = node.Children;
+            if (children == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                InjectSceneReferences(children[i], groupsById, fixturesById);
+            }
+        }
+
+        private void AllocateSubtreeBuffers(LightNodeBase node, Func<ILightState> stateFactory)
+        {
+            if (node == null)
+            {
+                return;
             }
 
             IReadOnlyList<LightNodeBase> children = node.Children;
@@ -324,20 +270,16 @@ namespace Lumiscore.Lighting
             }
         }
 
-        private Type ResolveTreeStateType(LightNodeBase node)
+        private static Type ResolveTreeStateType(LightNodeBase node)
         {
             if (node == null)
             {
                 return null;
             }
 
-            if (_bindingLookup.TryGetValue(node.Id, out StageNodeBinding binding))
+            if (node is LightLeafNode leaf && leaf.Fixture != null && leaf.Fixture.StateType != null)
             {
-                Type direct = binding.ResolveStateType();
-                if (direct != null)
-                {
-                    return direct;
-                }
+                return leaf.Fixture.StateType;
             }
 
             IReadOnlyList<LightNodeBase> children = node.Children;
@@ -368,9 +310,9 @@ namespace Lumiscore.Lighting
 
             if (childCount == 0)
             {
-                if (_bindingLookup.TryGetValue(node.Id, out StageNodeBinding binding) && binding.Driver != null)
+                if (node is LightLeafNode leaf && leaf.Fixture?.Driver != null)
                 {
-                    binding.Driver.ApplyState(inheritedState);
+                    leaf.Fixture.Driver.ApplyState(inheritedState);
                 }
 
                 onLeafEvaluated?.Invoke(node, inheritedState);

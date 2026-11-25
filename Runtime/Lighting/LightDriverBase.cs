@@ -1,20 +1,21 @@
 using System;
 using Lumiscore.Core;
-using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
-    public abstract class LightDriverBase<TState> : MonoBehaviour, ILightDriver<TState>
+    /// <summary>
+    /// Strongly-typed base class for lighting fixture drivers targeting <typeparamref name="TState"/>.
+    /// Concrete subclasses must be non-generic and marked <see cref="SerializableAttribute"/>.
+    /// </summary>
+    [Serializable]
+    public abstract class LightDriverBase<TState> : StageDriverBase
         where TState : class, ILightState
     {
-        public Type StateType => typeof(TState);
+        public override Type StateType => typeof(TState);
 
-        public abstract TState CaptureState();
         public abstract void ApplyState(TState state);
 
-        IStageState IStageDriver.CaptureState() => CaptureState();
-
-        void IStageDriver.ApplyState(IStageState state)
+        protected override void ApplyStateCore(IStageState state)
         {
             if (state is TState typedState)
             {
