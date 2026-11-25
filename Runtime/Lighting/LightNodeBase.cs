@@ -1,20 +1,16 @@
 using System;
+using System.Collections.Generic;
 using Lumiscore.Core;
 using UnityEngine;
 
 namespace Lumiscore.Lighting
 {
     [Serializable]
-    public abstract class LightNodeBase : StageNodeBase, ILightNode
+    public abstract class LightNodeBase : StageNodeBase
     {
-        [SerializeField] private string _stateTypeName;
         [NonSerialized] private Transform _rootTransform;
-
-        public string StateTypeName
-        {
-            get => _stateTypeName;
-            set => _stateTypeName = value ?? string.Empty;
-        }
+        [NonSerialized] private int _index;
+        [NonSerialized] private int _count = 1;
 
         public Transform RootTransform
         {
@@ -22,11 +18,17 @@ namespace Lumiscore.Lighting
             set => _rootTransform = value;
         }
 
-        public Type ResolveStateType()
-            => string.IsNullOrEmpty(_stateTypeName) ? null : Type.GetType(_stateTypeName);
+        public int Index => _index;
 
-        public void SetStateType(Type stateType)
-            => _stateTypeName = stateType != null ? stateType.AssemblyQualifiedName : string.Empty;
+        public int Count => _count;
+
+        public virtual IReadOnlyList<LightNodeBase> Children => Array.Empty<LightNodeBase>();
+
+        public virtual ILightLayout Layout
+        {
+            get => null;
+            set { }
+        }
 
         protected LightNodeBase()
         {
@@ -36,6 +38,12 @@ namespace Lumiscore.Lighting
             : base(name, id)
         {
             _rootTransform = rootTransform;
+        }
+
+        internal void SetLayoutMetrics(int index, int count)
+        {
+            _index = index;
+            _count = count;
         }
     }
 }

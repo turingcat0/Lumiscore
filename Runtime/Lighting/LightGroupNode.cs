@@ -5,18 +5,18 @@ using UnityEngine;
 namespace Lumiscore.Lighting
 {
     [Serializable]
-    public class LightGroupNode : LightNodeBase
+    public class LightGroupNode : LightNodeBase, ISerializationCallbackReceiver
     {
         [SerializeReference] private ILightLayout _layout;
-        [SerializeReference] private List<ILightNode> _children = new List<ILightNode>();
+        [SerializeReference] private List<LightNodeBase> _children = new List<LightNodeBase>();
 
-        public ILightLayout Layout
+        public override IReadOnlyList<LightNodeBase> Children => _children;
+
+        public override ILightLayout Layout
         {
             get => _layout;
             set => _layout = value;
         }
-
-        public IReadOnlyList<ILightNode> Children => _children;
 
         public LightGroupNode()
         {
@@ -28,7 +28,7 @@ namespace Lumiscore.Lighting
         }
 
         public LightGroupNode(
-            IEnumerable<ILightNode> children,
+            IEnumerable<LightNodeBase> children,
             string name = null,
             string id = null,
             Transform rootTransform = null)
@@ -36,24 +36,75 @@ namespace Lumiscore.Lighting
         {
             if (children != null)
             {
-                foreach (ILightNode child in children)
+                foreach (LightNodeBase child in children)
                 {
-                    AddChild(child);
+                    if (child != null)
+                    {
+                        _children.Add(child);
+                    }
                 }
+
+                RefreshChildLayoutMetrics();
             }
         }
 
-        public void AddChild(ILightNode child)
+        public void AddChild(LightNodeBase child)
         {
-            if (child != null)
+            if (child == null)
             {
-                _children.Add(child);
+                return;
+            }
+
+            _children.Add(child);
+            RefreshChildLayoutMetrics();
+        }
+
+        public bool RemoveChild(LightNodeBase child)
+        {
+            if (child == null || !_children.Remove(child))
+            {
+                return false;
+            }
+
+            RefreshChildLayoutMetrics();
+            return true;
+        }
+
+        public void RefreshChildLayoutMetrics()
+        {
+            int count = _children.Count;
+            for (int i = 0; i < count; i++)
+            {
+                _children[i]?.SetLayoutMetrics(i, count);
             }
         }
 
-        public bool RemoveChild(ILightNode child)
+        public static LightGroupNode WrapSingleLight(LightLeafNode leaf, string wrapperName = null)
         {
-            return child != null && _children.Remove(child);
+            if (leaf == null)
+            {
+                return null;
+            }
+
+            return new LightGroupNode(
+                new LightNodeBase[] { leaf },
+                string.IsNullOrEmpty(wrapperName) ? leaf.Name : wrapperName,
+                null,
+                leaf.RootTransform);
+        }
+
+        void ISerializationCallbackReceiver.OnBeforeSerialize()
+        {
+        }
+
+        void ISerializationCallbackReceiver.OnAfterDeserialize()
+        {
+            if (_children == null)
+            {
+                _children = new List<LightNodeBase>();
+            }
+
+            RefreshChildLayoutMetrics();
         }
     }
 }

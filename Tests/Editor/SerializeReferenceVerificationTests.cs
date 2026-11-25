@@ -173,8 +173,8 @@ namespace Lumiscore.Tests.Editor
             {
                 Layout = new LineLightLayout { Spacing = 2.5f, Direction = Vector3.forward, Centered = false }
             };
-            group.AddChild(new LightNode("L1"));
-            group.AddChild(new LightNode("L2"));
+            group.AddChild(new LightLeafNode("L1"));
+            group.AddChild(new LightLeafNode("L2"));
             show.AddRootNode(group);
 
             var track = new LightTrack<TestPositionModule>(group);

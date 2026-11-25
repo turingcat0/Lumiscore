@@ -37,6 +37,8 @@ namespace Lumiscore.Core
         [SerializeField] private List<SerializedTrackData> _serializedTracks = new List<SerializedTrackData>();
 
         [NonSerialized] private List<IStageTrack> _tracks = new List<IStageTrack>();
+        [NonSerialized] private Dictionary<IStageNode, List<IStageTrack>> _tracksByNode =
+            new Dictionary<IStageNode, List<IStageTrack>>();
 
         public string Id => _id;
 
@@ -76,15 +78,63 @@ namespace Lumiscore.Core
 
         public void AddTrack(IStageTrack track)
         {
-            if (track != null)
+            if (track == null)
             {
-                _tracks.Add(track);
+                return;
             }
+
+            _tracks.Add(track);
+            IndexTrack(track);
         }
 
         public bool RemoveTrack(IStageTrack track)
         {
-            return track != null && _tracks.Remove(track);
+            if (track == null || !_tracks.Remove(track))
+            {
+                return false;
+            }
+
+            if (track.TargetNode != null &&
+                _tracksByNode != null &&
+                _tracksByNode.TryGetValue(track.TargetNode, out List<IStageTrack> nodeTracks))
+            {
+                nodeTracks.Remove(track);
+            }
+
+            return true;
+        }
+
+        public IReadOnlyList<IStageTrack> GetTracks(IStageNode node)
+        {
+            if (node != null &&
+                _tracksByNode != null &&
+                _tracksByNode.TryGetValue(node, out List<IStageTrack> nodeTracks))
+            {
+                return nodeTracks;
+            }
+
+            return Array.Empty<IStageTrack>();
+        }
+
+        private void IndexTrack(IStageTrack track)
+        {
+            if (track == null || track.TargetNode == null)
+            {
+                return;
+            }
+
+            if (_tracksByNode == null)
+            {
+                _tracksByNode = new Dictionary<IStageNode, List<IStageTrack>>();
+            }
+
+            if (!_tracksByNode.TryGetValue(track.TargetNode, out List<IStageTrack> nodeTracks))
+            {
+                nodeTracks = new List<IStageTrack>();
+                _tracksByNode[track.TargetNode] = nodeTracks;
+            }
+
+            nodeTracks.Add(track);
         }
 
         public IStageTrack FindTrack(string trackId)
@@ -215,6 +265,7 @@ namespace Lumiscore.Core
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
             _tracks = new List<IStageTrack>();
+            _tracksByNode = new Dictionary<IStageNode, List<IStageTrack>>();
 
             if (_serializedTracks == null)
             {
@@ -257,6 +308,7 @@ namespace Lumiscore.Core
                 }
 
                 _tracks.Add(track);
+                IndexTrack(track);
             }
         }
 

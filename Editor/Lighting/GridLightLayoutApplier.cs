@@ -6,7 +6,7 @@ namespace Lumiscore.Editor.Lighting
 {
     public class GridLightLayoutApplier : ILightLayoutApplier<GridLightLayout>
     {
-        public void Apply(GridLightLayout layout, LightGroupNode group)
+        public void Apply(GridLightLayout layout, LightNodeBase group)
         {
             if (layout == null || group == null)
             {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Lumiscore.Core;
+using Lumiscore.Editor;
 using Lumiscore.Lighting;
 using NUnit.Framework;
 using UnityEngine;
@@ -34,12 +35,38 @@ namespace Lumiscore.Tests.Editor
             }
         }
 
-        public ILightState Clone()
+        public void CopyFrom(ILightState source)
+        {
+            if (source is EvalLightState other && other.Intensity != null)
+            {
+                Intensity.Value = other.Intensity.Value;
+            }
+        }
+
+        public void ResetToDefault()
+        {
+            Intensity.Value = 0f;
+        }
+    }
+
+    public sealed class MockEvalLightDriver : LightDriverBase<EvalLightState>
+    {
+        public float CurrentIntensity = 7.5f;
+
+        public override EvalLightState CaptureState()
         {
             return new EvalLightState
             {
-                Intensity = new EvalIntensityModule { Value = Intensity != null ? Intensity.Value : 0f }
+                Intensity = new EvalIntensityModule { Value = CurrentIntensity }
             };
+        }
+
+        public override void ApplyState(EvalLightState state)
+        {
+            if (state?.Intensity != null)
+            {
+                CurrentIntensity = state.Intensity.Value;
+            }
         }
     }
 
@@ -96,6 +123,7 @@ namespace Lumiscore.Tests.Editor
     {
         public float BaseValue = 10f;
         public float StepPerSibling = 10f;
+        public Color[] Palette = { Color.red, Color.blue };
 
         public override void Evaluate(LightEffectContext context, EvalIntensityModule[] results)
         {
@@ -141,26 +169,55 @@ namespace Lumiscore.Tests.Editor
         }
 
         [Test]
-        public void Evaluator_TopDownSiblingEvaluation_And_EaseInHoldEaseOut_And_Crossfade()
+        public void StageEffectBase_ReflectionClone_DeepCopiesArraysAndPreservesValues()
         {
-            var show = new StageShow("EvalShow");
+            var original = new SiblingRampEffect
+            {
+                BaseValue = 42f,
+                StepPerSibling = 5f,
+                Palette = new[] { Color.red, Color.green }
+            };
+
+            var cloned = original.Clone() as SiblingRampEffect;
+            Assert.IsNotNull(cloned);
+            Assert.AreNotSame(original, cloned);
+            Assert.AreNotSame(original.Palette, cloned.Palette);
+            Assert.AreEqual(42f, cloned.BaseValue, 1e-4f);
+            Assert.AreEqual(Color.green, cloned.Palette[1]);
+
+            cloned.Palette[1] = Color.yellow;
+            Assert.AreEqual(Color.green, original.Palette[1], "Mutating cloned array must not affect original.");
+        }
+
+        [Test]
+        public void StageController_TopDownUniformChildrenEvaluation_PreviewCaptureAndRestore()
+        {
+            var showAsset = ScriptableObject.CreateInstance<StageShowAsset>();
+            StageShow show = showAsset.Show;
             show.TempoMap.Bpm = 120f; // 2 beats per second
 
             var root = new LightGroupNode("AllStage");
-            root.SetStateType(typeof(EvalLightState));
-
             var leftWing = new LightGroupNode("LeftWing");
             var rightWing = new LightGroupNode("RightWing");
-            var l1 = new LightNode("L1");
-            var l2 = new LightNode("L2");
-            var r1 = new LightNode("R1");
+
+            var l1 = new LightLeafNode("L1");
+            var l2 = new LightLeafNode("L2");
+            var r1Leaf = new LightLeafNode("R1_Leaf");
+            var r1Wrapper = LightGroupNode.WrapSingleLight(r1Leaf, "R1");
 
             leftWing.AddChild(l1);
             leftWing.AddChild(l2);
-            rightWing.AddChild(r1);
+            rightWing.AddChild(r1Wrapper);
             root.AddChild(leftWing);
             root.AddChild(rightWing);
             show.AddRootNode(root);
+
+            Assert.AreEqual(0, l1.Index);
+            Assert.AreEqual(2, l1.Count);
+            Assert.AreEqual(1, l2.Index);
+            Assert.AreEqual(2, l2.Count);
+            Assert.AreEqual(0, r1Leaf.Index);
+            Assert.AreEqual(1, r1Leaf.Count);
 
             // Root track: sibling 0 (LeftWing) = 10, sibling 1 (RightWing) = 20
             var rootTrack = new LightTrack<EvalIntensityModule>(root);
@@ -178,42 +235,69 @@ namespace Lumiscore.Tests.Editor
             leftClip.Effect = new SiblingRampEffect { BaseValue = 1f, StepPerSibling = 1f };
             show.AddTrack(leftTrack);
 
-            var evaluator = new LightShowEvaluator();
-            var leafResults = new Dictionary<string, float>();
+            var rootGo = new GameObject("StageRoot");
+            var l1Go = new GameObject("L1");
+            var l2Go = new GameObject("L2");
+            var r1Go = new GameObject("R1");
 
-            // t = 1.0s -> inside root EaseIn (50%), leftTrack inactive
-            leafResults.Clear();
-            evaluator.Evaluate(show, 1f, (node, state) => leafResults[node.Name] = state.GetModule<EvalIntensityModule>().Value);
-            Assert.AreEqual(5f, leafResults["L1"], 1e-4f);
-            Assert.AreEqual(5f, leafResults["L2"], 1e-4f);
-            Assert.AreEqual(10f, leafResults["R1"], 1e-4f);
+            try
+            {
+                var controller = rootGo.AddComponent<StageController>();
+                var dL1 = l1Go.AddComponent<MockEvalLightDriver>();
+                var dL2 = l2Go.AddComponent<MockEvalLightDriver>();
+                var dR1 = r1Go.AddComponent<MockEvalLightDriver>();
+                dL1.CurrentIntensity = 7.5f;
+                dL2.CurrentIntensity = 8.5f;
+                dR1.CurrentIntensity = 9.5f;
 
-            // t = 4.0s -> root Hold (Left=10, Right=20) + leftTrack Additive (L1+=1, L2+=2)
-            leafResults.Clear();
-            evaluator.Evaluate(show, 4f, (node, state) => leafResults[node.Name] = state.GetModule<EvalIntensityModule>().Value);
-            Assert.AreEqual(11f, leafResults["L1"], 1e-4f);
-            Assert.AreEqual(12f, leafResults["L2"], 1e-4f);
-            Assert.AreEqual(20f, leafResults["R1"], 1e-4f);
+                controller.ShowAsset = showAsset;
+                controller.BindNode(l1.Id, l1Go.transform, dL1);
+                controller.BindNode(l2.Id, l2Go.transform, dL2);
+                controller.BindNode(r1Leaf.Id, r1Go.transform, dR1);
 
-            // t = 9.0s -> inside root EaseOut (50% back to 0), leftTrack inactive
-            leafResults.Clear();
-            evaluator.Evaluate(show, 9f, (node, state) => leafResults[node.Name] = state.GetModule<EvalIntensityModule>().Value);
-            Assert.AreEqual(5f, leafResults["L1"], 1e-4f);
-            Assert.AreEqual(5f, leafResults["L2"], 1e-4f);
-            Assert.AreEqual(10f, leafResults["R1"], 1e-4f);
+                // Begin editor preview session -> captures initial driver states
+                StageEditorSession.BeginPreview(controller);
+                Assert.IsTrue(StageEditorSession.IsPreviewing(controller));
 
-            // Same-track overlapping Crossfade + TempoMap beats on R1 leaf
-            var r1Track = new LightTrack<EvalIntensityModule>(r1);
-            var clipA = (LightClip<EvalIntensityModule>)r1Track.CreateClip(0f, 4f);
-            clipA.Effect = new SiblingRampEffect { BaseValue = 100f, StepPerSibling = 0f };
-            var clipB = (LightClip<EvalIntensityModule>)r1Track.CreateClip(2f, 6f);
-            clipB.Effect = new BeatConstantEffect { Scale = 10f }; // at t=3s, elapsed=1s=2 beats => value=20
-            show.AddTrack(r1Track);
+                // t = 1.0s -> root EaseIn (50%), leftTrack inactive
+                controller.EvaluateAt(1f);
+                Assert.AreEqual(5f, dL1.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(5f, dL2.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(10f, dR1.CurrentIntensity, 1e-4f);
 
-            // At t = 3.0s: overlap [2, 4] is at 50% => Lerp(100, 20, 0.5) = 60
-            leafResults.Clear();
-            evaluator.Evaluate(show, 3f, (node, state) => leafResults[node.Name] = state.GetModule<EvalIntensityModule>().Value);
-            Assert.AreEqual(60f, leafResults["R1"], 1e-4f);
+                // t = 4.0s -> root Hold + leftTrack Additive
+                controller.EvaluateAt(4f);
+                Assert.AreEqual(11f, dL1.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(12f, dL2.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(20f, dR1.CurrentIntensity, 1e-4f);
+
+                // Single-light override track attached to r1Wrapper (Count == 1) with Crossfade + TempoMap
+                var r1Track = new LightTrack<EvalIntensityModule>(r1Wrapper);
+                var clipA = (LightClip<EvalIntensityModule>)r1Track.CreateClip(0f, 4f);
+                clipA.Effect = new SiblingRampEffect { BaseValue = 100f, StepPerSibling = 0f };
+                var clipB = (LightClip<EvalIntensityModule>)r1Track.CreateClip(2f, 6f);
+                clipB.Effect = new BeatConstantEffect { Scale = 10f }; // at t=3s -> elapsed 1s = 2 beats -> 20
+                show.AddTrack(r1Track);
+
+                // t = 3.0s -> overlap [2, 4] at 50% => Lerp(100, 20, 0.5) = 60
+                controller.EvaluateAt(3f);
+                Assert.AreEqual(60f, dR1.CurrentIntensity, 1e-4f);
+
+                // End editor preview session -> restores initial captured states losslessly
+                StageEditorSession.EndPreview(controller);
+                Assert.IsFalse(StageEditorSession.IsPreviewing(controller));
+                Assert.AreEqual(7.5f, dL1.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(8.5f, dL2.CurrentIntensity, 1e-4f);
+                Assert.AreEqual(9.5f, dR1.CurrentIntensity, 1e-4f);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(r1Go);
+                UnityEngine.Object.DestroyImmediate(l2Go);
+                UnityEngine.Object.DestroyImmediate(l1Go);
+                UnityEngine.Object.DestroyImmediate(rootGo);
+                UnityEngine.Object.DestroyImmediate(showAsset);
+            }
         }
 
         private static bool Contains(IReadOnlyList<Type> list, Type target)

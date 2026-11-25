@@ -6,7 +6,7 @@ namespace Lumiscore.Editor.Lighting
 {
     public class LineLightLayoutApplier : ILightLayoutApplier<LineLightLayout>
     {
-        public void Apply(LineLightLayout layout, LightGroupNode group)
+        public void Apply(LineLightLayout layout, LightNodeBase group)
         {
             if (layout == null || group == null)
             {

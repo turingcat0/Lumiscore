@@ -4,13 +4,13 @@ using UnityEngine;
 namespace Lumiscore.Lighting
 {
     [Serializable]
-    public class LightNode : LightNodeBase
+    public class LightLeafNode : LightNodeBase
     {
-        public LightNode()
+        public LightLeafNode()
         {
         }
 
-        public LightNode(string name, string id = null, Transform rootTransform = null)
+        public LightLeafNode(string name, string id = null, Transform rootTransform = null)
             : base(name, id, rootTransform)
         {
         }

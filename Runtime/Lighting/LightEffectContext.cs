@@ -4,8 +4,8 @@ namespace Lumiscore.Lighting
 {
     public readonly struct LightEffectContext
     {
-        public readonly ILightNode TargetNode;
-        public readonly IReadOnlyList<ILightNode> Children;
+        public readonly LightNodeBase TargetNode;
+        public readonly IReadOnlyList<LightNodeBase> Children;
         public readonly IReadOnlyList<ILightState> PrevStates;
         public readonly float ElapsedTime;
         public readonly float Duration;
@@ -13,8 +13,8 @@ namespace Lumiscore.Lighting
         public readonly float CurrentBpm;
 
         public LightEffectContext(
-            ILightNode targetNode,
-            IReadOnlyList<ILightNode> children,
+            LightNodeBase targetNode,
+            IReadOnlyList<LightNodeBase> children,
             IReadOnlyList<ILightState> prevStates,
             float elapsedTime,
             float duration,

@@ -6,7 +6,7 @@ namespace Lumiscore.Editor.Lighting
 {
     public class CircleLightLayoutApplier : ILightLayoutApplier<CircleLightLayout>
     {
-        public void Apply(CircleLightLayout layout, LightGroupNode group)
+        public void Apply(CircleLightLayout layout, LightNodeBase group)
         {
             if (layout == null || group == null)
             {

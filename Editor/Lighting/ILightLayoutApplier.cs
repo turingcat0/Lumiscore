@@ -5,6 +5,6 @@ namespace Lumiscore.Editor.Lighting
     public interface ILightLayoutApplier<TLayout>
         where TLayout : class, ILightLayout
     {
-        void Apply(TLayout layout, LightGroupNode group);
+        void Apply(TLayout layout, LightNodeBase group);
     }
 }

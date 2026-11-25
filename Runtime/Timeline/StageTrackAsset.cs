@@ -1,5 +1,6 @@
 using System;
 using Lumiscore.Core;
+using Lumiscore.Lighting;
 using UnityEngine;
 using UnityEngine.Playables;
 using UnityEngine.Timeline;
@@ -40,6 +41,7 @@ namespace Lumiscore.Timeline
             StageTrackMixer mixer = playable.GetBehaviour();
             mixer.ShowAsset = _showAsset;
             mixer.TrackId = _trackId;
+            mixer.Controller = go != null ? go.GetComponent<StageController>() : null;
             return playable;
         }
     }

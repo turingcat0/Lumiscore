@@ -10,12 +10,12 @@ namespace Lumiscore.Lighting
         where TModule : class, ILightStateModule
     {
         [SerializeField] private string _id;
-        [SerializeReference] private ILightNode _targetNode;
+        [SerializeReference] private LightNodeBase _targetNode;
         [SerializeField] private List<LightClip<TModule>> _clips = new List<LightClip<TModule>>();
 
         public string Id => _id;
 
-        public ILightNode TargetNode
+        public LightNodeBase TargetNode
         {
             get => _targetNode;
             set => _targetNode = value;
@@ -34,7 +34,7 @@ namespace Lumiscore.Lighting
         {
         }
 
-        public LightTrack(ILightNode targetNode, string id = null)
+        public LightTrack(LightNodeBase targetNode, string id = null)
         {
             _id = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
             _targetNode = targetNode;
@@ -128,7 +128,7 @@ namespace Lumiscore.Lighting
         public void Restore(string id, IStageNode targetNode)
         {
             _id = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
-            _targetNode = targetNode as ILightNode;
+            _targetNode = targetNode as LightNodeBase;
         }
 
         [NonSerialized] private readonly List<LightClip<TModule>> _activeClips = new List<LightClip<TModule>>();
@@ -139,7 +139,7 @@ namespace Lumiscore.Lighting
         public void EvaluateTrack(
             float timelineTime,
             StageTempoMap tempoMap,
-            IReadOnlyList<ILightNode> children,
+            IReadOnlyList<LightNodeBase> children,
             IReadOnlyList<ILightState> prevStates,
             IReadOnlyList<ILightState> workingStates)
         {
@@ -201,7 +201,7 @@ namespace Lumiscore.Lighting
             LightClip<TModule> clip,
             float timelineTime,
             StageTempoMap tempoMap,
-            IReadOnlyList<ILightNode> children,
+            IReadOnlyList<LightNodeBase> children,
             IReadOnlyList<ILightState> prevStates,
             IReadOnlyList<ILightState> workingStates,
             IStageModuleMixer<TModule> mixer,
@@ -258,7 +258,7 @@ namespace Lumiscore.Lighting
         private void EvaluateOverlappingClips(
             float timelineTime,
             StageTempoMap tempoMap,
-            IReadOnlyList<ILightNode> children,
+            IReadOnlyList<LightNodeBase> children,
             IReadOnlyList<ILightState> prevStates,
             IReadOnlyList<ILightState> workingStates,
             IStageModuleMixer<TModule> mixer,
@@ -304,7 +304,7 @@ namespace Lumiscore.Lighting
             LightClip<TModule> clip,
             float timelineTime,
             StageTempoMap tempoMap,
-            IReadOnlyList<ILightNode> children,
+            IReadOnlyList<LightNodeBase> children,
             IReadOnlyList<ILightState> prevStates)
         {
             float elapsedTime = timelineTime - clip.StartTime;
@@ -351,15 +351,6 @@ namespace Lumiscore.Lighting
             => Activator.CreateInstance<TModule>();
 
         private static LightEffectBase<TModule> CloneEffect(LightEffectBase<TModule> source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            Type effectType = source.GetType();
-            string json = JsonUtility.ToJson(source);
-            return JsonUtility.FromJson(json, effectType) as LightEffectBase<TModule>;
-        }
+            => source?.Clone() as LightEffectBase<TModule>;
     }
 }
