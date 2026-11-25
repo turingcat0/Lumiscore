@@ -15,7 +15,7 @@ namespace Lumiscore.Tests.Editor
     }
 
     [Serializable]
-    public class TestPositionEffect : ILightEffect<TestPositionModule>
+    public class TestPositionEffect : LightEffectBase<TestPositionModule>
     {
         public float Pan = 42.5f;
         public Vector3 Offset = new Vector3(1f, 2f, 3f);
@@ -23,9 +23,12 @@ namespace Lumiscore.Tests.Editor
         public AnimationCurve Curve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
         public Gradient Tint = CreateDefaultGradient();
 
-        public TestPositionModule Evaluate(LightEffectContext context)
+        public override void Evaluate(LightEffectContext context, TestPositionModule[] results)
         {
-            return new TestPositionModule { Pan = Pan };
+            for (int i = 0; i < results.Length; i++)
+            {
+                results[i].Pan = Pan;
+            }
         }
 
         public static Gradient CreateDefaultGradient()
@@ -97,14 +100,14 @@ namespace Lumiscore.Tests.Editor
     [Serializable]
     public class TestNonGenericEffectClip
     {
-        [SerializeReference] public IStageEffect Effect;
+        [SerializeReference] public StageEffectBase Effect;
     }
 
     [Serializable]
     public class TestGenericEffectClip<TModule>
         where TModule : class, ILightStateModule
     {
-        [SerializeReference] public ILightEffect<TModule> Effect;
+        [SerializeReference] public LightEffectBase<TModule> Effect;
     }
 
     public class SerializeReferenceVerificationTests
@@ -178,7 +181,8 @@ namespace Lumiscore.Tests.Editor
             var clip = (LightClip<TestPositionModule>)track.CreateClip(1.5f, 6.5f);
             clip.BlendMode = StageBlendMode.Additive;
             clip.Weight = 0.75f;
-            clip.EaseDuration = 0.5f;
+            clip.EaseInDuration = 0.5f;
+            clip.EaseOutDuration = 0.25f;
             clip.Effect = new TestPositionEffect
             {
                 Pan = 123.4f,
@@ -210,10 +214,11 @@ namespace Lumiscore.Tests.Editor
             Assert.AreEqual(6.5f, reloadedClip.EndTime, 1e-4f);
             Assert.AreEqual(StageBlendMode.Additive, reloadedClip.BlendMode);
             Assert.AreEqual(0.75f, reloadedClip.Weight, 1e-4f);
-            Assert.AreEqual(0.5f, reloadedClip.EaseDuration, 1e-4f);
+            Assert.AreEqual(0.5f, reloadedClip.EaseInDuration, 1e-4f);
+            Assert.AreEqual(0.25f, reloadedClip.EaseOutDuration, 1e-4f);
 
             var reloadedEffect = reloadedClip.Effect as TestPositionEffect;
-            Assert.IsNotNull(reloadedEffect, "LightClip<TModule>._effect (ILightEffect<TModule>) was dropped or null after disk reload!");
+            Assert.IsNotNull(reloadedEffect, "LightClip<TModule>._effect (StageEffectBase) was dropped or null after disk reload!");
             Assert.AreEqual(123.4f, reloadedEffect.Pan, 1e-4f);
             Assert.AreEqual(new Vector3(4f, 5f, 6f), reloadedEffect.Offset);
             Assert.AreEqual(2, reloadedEffect.Colors.Length);
@@ -278,7 +283,7 @@ namespace Lumiscore.Tests.Editor
         }
 
         [Test]
-        public void Test4_EffectField_NonGenericIStageEffect_Vs_GenericILightEffect_DiskRoundTrip()
+        public void Test4_EffectField_NonGenericStageEffectBase_Vs_GenericLightEffectBase_DiskRoundTrip()
         {
             var asset = ScriptableObject.CreateInstance<TestClipContainerAsset>();
             asset.NonGenericClip.Effect = new TestPositionEffect { Pan = 77.7f };
@@ -287,10 +292,10 @@ namespace Lumiscore.Tests.Editor
             TestClipContainerAsset reloaded = SaveAndReloadFromDisk(asset, "Test4_EffectFieldComparison", out string yaml);
             Debug.Log($"[LumiscoreTest4] NonGenericEffect={reloaded.NonGenericClip.Effect?.GetType().Name ?? "NULL"}, GenericEffect={reloaded.GenericClip.Effect?.GetType().Name ?? "NULL"}\n{ExtractManagedReferencesYaml(yaml)}");
 
-            Assert.IsInstanceOf<TestPositionEffect>(reloaded.NonGenericClip.Effect, "Non-generic IStageEffect failed to deserialize.");
+            Assert.IsInstanceOf<TestPositionEffect>(reloaded.NonGenericClip.Effect, "Non-generic StageEffectBase failed to deserialize.");
             Assert.AreEqual(77.7f, ((TestPositionEffect)reloaded.NonGenericClip.Effect).Pan, 1e-4f);
 
-            Assert.IsInstanceOf<TestPositionEffect>(reloaded.GenericClip.Effect, "Generic ILightEffect<TModule> failed to deserialize.");
+            Assert.IsInstanceOf<TestPositionEffect>(reloaded.GenericClip.Effect, "Generic LightEffectBase<TModule> failed to deserialize.");
             Assert.AreEqual(88.8f, ((TestPositionEffect)reloaded.GenericClip.Effect).Pan, 1e-4f);
         }
     }

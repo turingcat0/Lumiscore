@@ -8,9 +8,10 @@ namespace Lumiscore.Core
         float Duration { get; }
         StageBlendMode BlendMode { get; set; }
         float Weight { get; set; }
-        float EaseDuration { get; set; }
-        IStageEffect Effect { get; }
-        bool TrySetEffect(IStageEffect effect);
+        float EaseInDuration { get; set; }
+        float EaseOutDuration { get; set; }
+        StageEffectBase Effect { get; }
+        bool TrySetEffect(StageEffectBase effect);
         bool IsActiveAt(float timelineTime);
     }
 }

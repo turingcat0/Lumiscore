@@ -13,8 +13,9 @@ namespace Lumiscore.Lighting
         [SerializeField] private float _endTime;
         [SerializeField] private StageBlendMode _blendMode = StageBlendMode.Override;
         [SerializeField] private float _weight = 1f;
-        [SerializeField] private float _easeDuration;
-        [SerializeReference] private IStageEffect _effect;
+        [SerializeField] private float _easeInDuration;
+        [SerializeField] private float _easeOutDuration;
+        [SerializeReference] private StageEffectBase _effect;
 
         public string Id => _id;
 
@@ -42,21 +43,27 @@ namespace Lumiscore.Lighting
             set => _weight = value;
         }
 
-        public float EaseDuration
+        public float EaseInDuration
         {
-            get => _easeDuration;
-            set => _easeDuration = value;
+            get => _easeInDuration;
+            set => _easeInDuration = value;
         }
 
-        public ILightEffect<TModule> Effect
+        public float EaseOutDuration
         {
-            get => _effect as ILightEffect<TModule>;
+            get => _easeOutDuration;
+            set => _easeOutDuration = value;
+        }
+
+        public LightEffectBase<TModule> Effect
+        {
+            get => _effect as LightEffectBase<TModule>;
             set => _effect = value;
         }
 
-        IStageEffect IStageClip.Effect => _effect;
+        StageEffectBase IStageClip.Effect => _effect;
 
-        public bool TrySetEffect(IStageEffect effect)
+        public bool TrySetEffect(StageEffectBase effect)
         {
             if (effect == null)
             {
@@ -64,7 +71,7 @@ namespace Lumiscore.Lighting
                 return true;
             }
 
-            if (effect is ILightEffect<TModule>)
+            if (effect is LightEffectBase<TModule>)
             {
                 _effect = effect;
                 return true;

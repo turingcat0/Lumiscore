@@ -129,9 +129,13 @@ namespace Lumiscore.Editor.Timeline
 
             float newStart = (float)clip.start;
             float newEnd = (float)clip.end;
+            float newEaseIn = (float)clip.easeInDuration;
+            float newEaseOut = (float)clip.easeOutDuration;
 
             if (Mathf.Abs(modelClip.StartTime - newStart) <= TimeEpsilon &&
-                Mathf.Abs(modelClip.EndTime - newEnd) <= TimeEpsilon)
+                Mathf.Abs(modelClip.EndTime - newEnd) <= TimeEpsilon &&
+                Mathf.Abs(modelClip.EaseInDuration - newEaseIn) <= TimeEpsilon &&
+                Mathf.Abs(modelClip.EaseOutDuration - newEaseOut) <= TimeEpsilon)
             {
                 return;
             }
@@ -139,6 +143,8 @@ namespace Lumiscore.Editor.Timeline
             Undo.RecordObject(showAsset, "Edit Stage Clip Timing");
             modelClip.StartTime = newStart;
             modelClip.EndTime = newEnd;
+            modelClip.EaseInDuration = newEaseIn;
+            modelClip.EaseOutDuration = newEaseOut;
             EditorUtility.SetDirty(showAsset);
         }
 
@@ -325,11 +331,15 @@ namespace Lumiscore.Editor.Timeline
                     activeModelIds.Add(modelClip.Id);
                     float targetStart = modelClip.StartTime;
                     float targetDuration = Mathf.Max(MinClipDuration, modelClip.Duration);
+                    float targetEaseIn = Mathf.Max(0f, modelClip.EaseInDuration);
+                    float targetEaseOut = Mathf.Max(0f, modelClip.EaseOutDuration);
 
                     if (viewClipsById.TryGetValue(modelClip.Id, out TimelineClip viewClip))
                     {
                         if (Mathf.Abs((float)viewClip.start - targetStart) > TimeEpsilon ||
-                            Mathf.Abs((float)viewClip.duration - targetDuration) > TimeEpsilon)
+                            Mathf.Abs((float)viewClip.duration - targetDuration) > TimeEpsilon ||
+                            Mathf.Abs((float)viewClip.easeInDuration - targetEaseIn) > TimeEpsilon ||
+                            Mathf.Abs((float)viewClip.easeOutDuration - targetEaseOut) > TimeEpsilon)
                         {
                             if (recordUndo && !trackModified)
                             {
@@ -338,6 +348,8 @@ namespace Lumiscore.Editor.Timeline
 
                             viewClip.start = targetStart;
                             viewClip.duration = targetDuration;
+                            viewClip.easeInDuration = targetEaseIn;
+                            viewClip.easeOutDuration = targetEaseOut;
                             trackModified = true;
                         }
                     }
@@ -351,6 +363,8 @@ namespace Lumiscore.Editor.Timeline
                         TimelineClip createdClip = trackAsset.CreateClip<StageClipAsset>();
                         createdClip.start = targetStart;
                         createdClip.duration = targetDuration;
+                        createdClip.easeInDuration = targetEaseIn;
+                        createdClip.easeOutDuration = targetEaseOut;
 
                         if (createdClip.asset is StageClipAsset createdAsset)
                         {

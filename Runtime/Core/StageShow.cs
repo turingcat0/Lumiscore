@@ -25,12 +25,14 @@ namespace Lumiscore.Core
             public float EndTime;
             public StageBlendMode BlendMode;
             public float Weight;
-            public float EaseDuration;
-            [SerializeReference] public IStageEffect Effect;
+            public float EaseInDuration;
+            public float EaseOutDuration;
+            [SerializeReference] public StageEffectBase Effect;
         }
 
         [SerializeField] private string _id;
         [SerializeField] private string _name;
+        [SerializeField] private StageTempoMap _tempoMap = new StageTempoMap();
         [SerializeReference] private List<IStageNode> _rootNodes = new List<IStageNode>();
         [SerializeField] private List<SerializedTrackData> _serializedTracks = new List<SerializedTrackData>();
 
@@ -44,6 +46,7 @@ namespace Lumiscore.Core
             set => _name = value ?? string.Empty;
         }
 
+        public StageTempoMap TempoMap => _tempoMap ?? (_tempoMap = new StageTempoMap());
         public IReadOnlyList<IStageNode> RootNodes => _rootNodes;
         public IReadOnlyList<IStageTrack> Tracks => _tracks;
 
@@ -199,7 +202,8 @@ namespace Lumiscore.Core
                         EndTime = clip.EndTime,
                         BlendMode = clip.BlendMode,
                         Weight = clip.Weight,
-                        EaseDuration = clip.EaseDuration,
+                        EaseInDuration = clip.EaseInDuration,
+                        EaseOutDuration = clip.EaseOutDuration,
                         Effect = clip.Effect
                     });
                 }
@@ -246,7 +250,8 @@ namespace Lumiscore.Core
                         IStageClip clip = track.CreateClip(clipData.StartTime, clipData.EndTime, clipData.Id);
                         clip.BlendMode = clipData.BlendMode;
                         clip.Weight = clipData.Weight;
-                        clip.EaseDuration = clipData.EaseDuration;
+                        clip.EaseInDuration = clipData.EaseInDuration;
+                        clip.EaseOutDuration = clipData.EaseOutDuration;
                         clip.TrySetEffect(clipData.Effect);
                     }
                 }
