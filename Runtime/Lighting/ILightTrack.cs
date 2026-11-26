@@ -5,9 +5,8 @@ namespace Lumiscore.Lighting
 {
     public interface ILightTrack : IStageTrack
     {
-        new LightNodeBase TargetNode { get; }
-
         void EvaluateTrack(
+            LightNodeBase targetNode,
             float timelineTime,
             StageTempoMap tempoMap,
             IReadOnlyList<LightNodeBase> children,

@@ -55,8 +55,11 @@ StageNodeBase (Core abstract: Id, Name)
   - Recursion terminates when `node.Children.Count == 0` (`LightLeafNode`), flushing the final `ILightState` to the bound `StageDriverBase`.
 - **Homogeneous `TState` per light tree.**
   - Each root light tree represents one fixture state type (e.g., moving heads vs. lasers live in separate root trees). `LightNodeBase` intentionally does **not** carry `TState` metadata; scene bindings / `StageController` own the node-to-`TState` and driver mapping.
+- **Scene Hierarchy is the single source of truth for stage topology.**
+  - `StageShowAsset` stores **only** song-level authoring data (`TempoMap`, tracks keyed by `TargetNodeId`, clips, and effects) — never a duplicate copy of the stage node tree.
+  - `StageController` builds its runtime in-memory `RootNodes` (`LightGroupNode` / `LightLeafNode`) tree directly from scene `LightGroup` / `LightFixture` components, so editing lights in the stage immediately applies to all songs sharing that stage.
 - **Zero-GC hot loop.**
-  - `StageShow` maintains an in-memory `[NonSerialized] Dictionary<IStageNode, List<IStageTrack>>` for `O(1)` `GetTracks(node)` lookup without per-frame re-indexing.
+  - `StageShow` maintains an in-memory `[NonSerialized] Dictionary<string, List<IStageTrack>>` for `O(1)` `GetTracks(nodeId)` lookup without per-frame re-indexing.
   - `StageController` pre-allocates per-node `ILightState` working/previous buffers once when cache is rebuilt, resetting and copying via `ILightState.ResetToDefault()` and `ILightState.CopyFrom(source)`.
   - `LightTrack<TModule>` pre-allocates reusable `TModule[]` scratch buffers and double-buffers mixer outputs so `from` and `result` never alias.
   - `LightEffectBase<TModule>.Evaluate(LightEffectContext context, TModule[] results)` is a **stateless pure function** that writes directly into the pre-allocated `results` array (0 allocations per frame, arbitrary Timeline scrubbing).

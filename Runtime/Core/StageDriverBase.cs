@@ -12,6 +12,12 @@ namespace Lumiscore.Core
     {
         public abstract Type StateType { get; }
 
+        /// <summary>
+        /// Inspects <paramref name="target"/> (by child hierarchy names, components, etc.) during
+        /// fixture auto-detection. Returns true and binds internal references if this driver matches.
+        /// </summary>
+        public virtual bool TryBind(GameObject target) => false;
+
         public void ApplyState(IStageState state) => ApplyStateCore(state);
 
         /// <summary>

@@ -169,15 +169,7 @@ namespace Lumiscore.Tests.Editor
             StageShow show = asset.Show;
             show.Name = "TestShow";
 
-            var group = new LightGroupNode("BackRow")
-            {
-                Layout = new LineLightLayout { Spacing = 2.5f, Direction = Vector3.forward, Centered = false }
-            };
-            group.AddChild(new LightLeafNode("L1"));
-            group.AddChild(new LightLeafNode("L2"));
-            show.AddRootNode(group);
-
-            var track = new LightTrack<TestPositionModule>(group);
+            var track = new LightTrack<TestPositionModule>("group_back_row");
             var clip = (LightClip<TestPositionModule>)track.CreateClip(1.5f, 6.5f);
             clip.BlendMode = StageBlendMode.Additive;
             clip.Weight = 0.75f;
@@ -195,18 +187,10 @@ namespace Lumiscore.Tests.Editor
             Debug.Log($"[LumiscoreTest1] TrackCount={reloaded.Show.Tracks.Count}, FirstTrack={reloaded.Show.Tracks[0]?.GetType().FullName ?? "NULL"}\n{ExtractManagedReferencesYaml(yaml)}");
 
             Assert.AreEqual("TestShow", reloaded.Show.Name);
-            Assert.AreEqual(1, reloaded.Show.RootNodes.Count);
-
-            var reloadedGroup = reloaded.Show.RootNodes[0] as LightGroupNode;
-            Assert.IsNotNull(reloadedGroup, "LightGroupNode failed to deserialize.");
-            Assert.AreEqual(2, reloadedGroup.Children.Count);
-            Assert.IsInstanceOf<LineLightLayout>(reloadedGroup.Layout);
-            Assert.AreEqual(2.5f, ((LineLightLayout)reloadedGroup.Layout).Spacing, 1e-4f);
-
             Assert.AreEqual(1, reloaded.Show.Tracks.Count);
             var reloadedTrack = reloaded.Show.Tracks[0] as LightTrack<TestPositionModule>;
             Assert.IsNotNull(reloadedTrack, "LightTrack<TestPositionModule> was dropped or null after disk reload!");
-            Assert.IsTrue(ReferenceEquals(reloadedTrack.TargetNode, reloadedGroup), "Shared TargetNode reference was not preserved.");
+            Assert.AreEqual("group_back_row", reloadedTrack.TargetNodeId, "TargetNodeId was not preserved.");
 
             Assert.AreEqual(1, reloadedTrack.Clips.Count);
             LightClip<TestPositionModule> reloadedClip = reloadedTrack.Clips[0];

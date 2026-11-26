@@ -6,10 +6,10 @@ using UnityEngine;
 namespace Lumiscore.Lighting
 {
     /// <summary>
-    /// Scene-root runtime controller that binds <see cref="StageShow"/> nodes to scene
-    /// <see cref="LightGroup"/> / <see cref="LightFixture"/> components, pre-allocates
-    /// per-node <see cref="ILightState"/> buffers for zero-GC top-down evaluation, and deduplicates
-    /// per-frame Timeline <c>ProcessFrame</c> calls.
+    /// Scene-root runtime controller that builds the in-memory <see cref="LightNodeBase"/> hierarchy
+    /// directly from scene <see cref="LightGroup"/> / <see cref="LightFixture"/> components (single
+    /// source of truth), pre-allocates per-node <see cref="ILightState"/> buffers for zero-GC
+    /// top-down evaluation, and deduplicates per-frame Timeline <c>ProcessFrame</c> calls.
     /// </summary>
     public class StageController : MonoBehaviour
     {
@@ -31,7 +31,9 @@ namespace Lumiscore.Lighting
         }
 
         [SerializeField] private StageShowAsset _showAsset;
+        [SerializeField] private bool _wrapIndividualLights;
 
+        private readonly List<LightNodeBase> _rootNodes = new List<LightNodeBase>();
         private readonly Dictionary<LightNodeBase, ILightState> _rootStates = new Dictionary<LightNodeBase, ILightState>();
         private readonly Dictionary<LightNodeBase, NodeEvalBuffers> _nodeBuffers = new Dictionary<LightNodeBase, NodeEvalBuffers>();
 
@@ -53,6 +55,32 @@ namespace Lumiscore.Lighting
                     _showAsset = value;
                     InvalidateCache();
                 }
+            }
+        }
+
+        public bool WrapIndividualLights
+        {
+            get => _wrapIndividualLights;
+            set
+            {
+                if (_wrapIndividualLights != value)
+                {
+                    _wrapIndividualLights = value;
+                    InvalidateCache();
+                }
+            }
+        }
+
+        public IReadOnlyList<LightNodeBase> RootNodes
+        {
+            get
+            {
+                if (_cacheDirty)
+                {
+                    RebuildSceneTree();
+                }
+
+                return _rootNodes;
             }
         }
 
@@ -139,17 +167,12 @@ namespace Lumiscore.Lighting
 
             if (_cacheDirty)
             {
-                RebuildEvaluationCache(show);
+                RebuildSceneTree();
             }
 
-            IReadOnlyList<IStageNode> roots = show.RootNodes;
-            for (int i = 0; i < roots.Count; i++)
+            for (int i = 0; i < _rootNodes.Count; i++)
             {
-                if (!(roots[i] is LightNodeBase rootLightNode))
-                {
-                    continue;
-                }
-
+                LightNodeBase rootLightNode = _rootNodes[i];
                 if (!_rootStates.TryGetValue(rootLightNode, out ILightState rootState) || rootState == null)
                 {
                     continue;
@@ -160,48 +183,22 @@ namespace Lumiscore.Lighting
             }
         }
 
-        public void RebuildEvaluationCache(StageShow show = null)
+        /// <summary>
+        /// Scans child <see cref="LightGroup"/> and <see cref="LightFixture"/> components to build the
+        /// runtime <see cref="RootNodes"/> hierarchy and pre-allocate per-node evaluation state buffers.
+        /// </summary>
+        public void RebuildSceneTree()
         {
             _cacheDirty = false;
+            _rootNodes.Clear();
             _rootStates.Clear();
             _nodeBuffers.Clear();
 
-            StageShow targetShow = show ?? (_showAsset != null ? _showAsset.Show : null);
-            if (targetShow == null)
+            CollectChildNodes(transform, _rootNodes, _wrapIndividualLights);
+
+            for (int i = 0; i < _rootNodes.Count; i++)
             {
-                return;
-            }
-
-            var groupsById = new Dictionary<string, LightGroup>();
-            LightGroup[] groups = GetComponentsInChildren<LightGroup>(true);
-            for (int i = 0; i < groups.Length; i++)
-            {
-                if (groups[i] != null)
-                {
-                    groupsById[groups[i].NodeId] = groups[i];
-                }
-            }
-
-            var fixturesById = new Dictionary<string, LightFixture>();
-            LightFixture[] fixtures = GetComponentsInChildren<LightFixture>(true);
-            for (int i = 0; i < fixtures.Length; i++)
-            {
-                if (fixtures[i] != null)
-                {
-                    fixturesById[fixtures[i].NodeId] = fixtures[i];
-                }
-            }
-
-            IReadOnlyList<IStageNode> roots = targetShow.RootNodes;
-            for (int i = 0; i < roots.Count; i++)
-            {
-                if (!(roots[i] is LightNodeBase rootLightNode))
-                {
-                    continue;
-                }
-
-                InjectSceneReferences(rootLightNode, groupsById, fixturesById);
-
+                LightNodeBase rootLightNode = _rootNodes[i];
                 Type stateType = ResolveTreeStateType(rootLightNode);
                 if (stateType == null || !typeof(ILightState).IsAssignableFrom(stateType))
                 {
@@ -214,63 +211,7 @@ namespace Lumiscore.Lighting
             }
         }
 
-        private static void InjectSceneReferences(
-            LightNodeBase node,
-            Dictionary<string, LightGroup> groupsById,
-            Dictionary<string, LightFixture> fixturesById)
-        {
-            if (node == null)
-            {
-                return;
-            }
-
-            if (node is LightLeafNode leaf)
-            {
-                if (fixturesById.TryGetValue(leaf.Id, out LightFixture fixture))
-                {
-                    leaf.Fixture = fixture;
-                    leaf.RootTransform = fixture.transform;
-                }
-            }
-            else if (groupsById.TryGetValue(node.Id, out LightGroup group))
-            {
-                node.RootTransform = group.transform;
-            }
-
-            IReadOnlyList<LightNodeBase> children = node.Children;
-            if (children == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < children.Count; i++)
-            {
-                InjectSceneReferences(children[i], groupsById, fixturesById);
-            }
-        }
-
-        private void AllocateSubtreeBuffers(LightNodeBase node, Func<ILightState> stateFactory)
-        {
-            if (node == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<LightNodeBase> children = node.Children;
-            int childCount = children != null ? children.Count : 0;
-            if (childCount == 0)
-            {
-                return;
-            }
-
-            _nodeBuffers[node] = new NodeEvalBuffers(childCount, stateFactory);
-            for (int i = 0; i < childCount; i++)
-            {
-                AllocateSubtreeBuffers(children[i], stateFactory);
-            }
-        }
-
-        private static Type ResolveTreeStateType(LightNodeBase node)
+        public static Type ResolveTreeStateType(LightNodeBase node)
         {
             if (node == null)
             {
@@ -296,6 +237,82 @@ namespace Lumiscore.Lighting
             }
 
             return null;
+        }
+
+        private static void CollectChildNodes(Transform parent, List<LightNodeBase> output, bool wrapIndividualLights)
+        {
+            int childCount = parent.childCount;
+            for (int i = 0; i < childCount; i++)
+            {
+                Transform child = parent.GetChild(i);
+
+                LightGroup groupComp = child.GetComponent<LightGroup>();
+                if (groupComp != null)
+                {
+                    groupComp.EnsureNodeId();
+                    var groupNode = new LightGroupNode(child.name, groupComp.NodeId, child)
+                    {
+                        Layout = groupComp.Layout
+                    };
+
+                    var nestedChildren = new List<LightNodeBase>();
+                    CollectChildNodes(child, nestedChildren, wrapIndividualLights);
+                    for (int c = 0; c < nestedChildren.Count; c++)
+                    {
+                        groupNode.AddChild(nestedChildren[c]);
+                    }
+
+                    output.Add(groupNode);
+                    continue;
+                }
+
+                LightFixture fixtureComp = child.GetComponent<LightFixture>();
+                if (fixtureComp != null)
+                {
+                    fixtureComp.EnsureNodeId();
+                    var leafNode = new LightLeafNode(child.name, fixtureComp.NodeId, child)
+                    {
+                        Fixture = fixtureComp
+                    };
+
+                    if (wrapIndividualLights)
+                    {
+                        string wrapperId = fixtureComp.NodeId + "_wrap";
+                        var wrapper = new LightGroupNode(new LightNodeBase[] { leafNode }, child.name, wrapperId, child);
+                        output.Add(wrapper);
+                    }
+                    else
+                    {
+                        output.Add(leafNode);
+                    }
+
+                    continue;
+                }
+
+                // Transparent organizational folder GameObject: continue scanning children
+                CollectChildNodes(child, output, wrapIndividualLights);
+            }
+        }
+
+        private void AllocateSubtreeBuffers(LightNodeBase node, Func<ILightState> stateFactory)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<LightNodeBase> children = node.Children;
+            int childCount = children != null ? children.Count : 0;
+            if (childCount == 0)
+            {
+                return;
+            }
+
+            _nodeBuffers[node] = new NodeEvalBuffers(childCount, stateFactory);
+            for (int i = 0; i < childCount; i++)
+            {
+                AllocateSubtreeBuffers(children[i], stateFactory);
+            }
         }
 
         private void EvaluateSubtree(
@@ -330,12 +347,13 @@ namespace Lumiscore.Lighting
                 buffers.WorkingStates[i].CopyFrom(inheritedState);
             }
 
-            IReadOnlyList<IStageTrack> nodeTracks = show.GetTracks(node);
+            IReadOnlyList<IStageTrack> nodeTracks = show.GetTracks(node.Id);
             for (int i = 0; i < nodeTracks.Count; i++)
             {
                 if (nodeTracks[i] is ILightTrack lightTrack)
                 {
                     lightTrack.EvaluateTrack(
+                        node,
                         timelineTime,
                         show.TempoMap,
                         children,

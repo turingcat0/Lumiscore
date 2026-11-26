@@ -6,7 +6,7 @@ namespace Lumiscore.Core
     public interface IStageTrack
     {
         string Id { get; }
-        IStageNode TargetNode { get; }
+        string TargetNodeId { get; }
         Type ModuleType { get; }
         IReadOnlyList<IStageClip> Clips { get; }
 
@@ -16,6 +16,6 @@ namespace Lumiscore.Core
         bool CanAcceptClip(IStageClip clip);
         bool AddClip(IStageClip clip);
         bool RemoveClip(string clipId);
-        void Restore(string id, IStageNode targetNode);
+        void Restore(string id, string targetNodeId);
     }
 }

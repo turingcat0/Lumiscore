@@ -4,6 +4,7 @@ using Lumiscore.Core;
 using Lumiscore.Editor.Lighting;
 using Lumiscore.Lighting;
 using UnityEditor;
+using UnityEngine.Playables;
 
 namespace Lumiscore.Editor
 {
@@ -16,6 +17,8 @@ namespace Lumiscore.Editor
     public static class StageEditorSession
     {
         private static readonly HashSet<StageController> s_ActivePreviews = new HashSet<StageController>();
+        private static readonly Dictionary<PlayableDirector, StageController> s_DirectorMap =
+            new Dictionary<PlayableDirector, StageController>();
 
         static StageEditorSession()
         {
@@ -31,9 +34,16 @@ namespace Lumiscore.Editor
 
         public static void BeginPreview(StageController controller)
         {
-            if (controller != null)
+            if (controller == null || !s_ActivePreviews.Add(controller))
             {
-                s_ActivePreviews.Add(controller);
+                return;
+            }
+
+            if (controller.TryGetComponent<PlayableDirector>(out PlayableDirector director))
+            {
+                s_DirectorMap[director] = controller;
+                director.stopped -= HandleDirectorStopped;
+                director.stopped += HandleDirectorStopped;
             }
         }
 
@@ -42,6 +52,12 @@ namespace Lumiscore.Editor
             if (controller == null || !s_ActivePreviews.Remove(controller))
             {
                 return;
+            }
+
+            if (controller.TryGetComponent<PlayableDirector>(out PlayableDirector director))
+            {
+                director.stopped -= HandleDirectorStopped;
+                s_DirectorMap.Remove(director);
             }
 
             controller.ResetAllPreviews();
@@ -55,14 +71,13 @@ namespace Lumiscore.Editor
             }
 
             var controllers = new List<StageController>(s_ActivePreviews);
-            s_ActivePreviews.Clear();
             for (int i = 0; i < controllers.Count; i++)
             {
-                if (controllers[i] != null)
-                {
-                    controllers[i].ResetAllPreviews();
-                }
+                EndPreview(controllers[i]);
             }
+
+            s_ActivePreviews.Clear();
+            s_DirectorMap.Clear();
         }
 
         public static bool ApplyLayout(LightNodeBase node)
@@ -96,6 +111,14 @@ namespace Lumiscore.Editor
         private static void HandlePreviewStopped(StageController controller)
         {
             if (!EditorApplication.isPlaying)
+            {
+                EndPreview(controller);
+            }
+        }
+
+        private static void HandleDirectorStopped(PlayableDirector director)
+        {
+            if (director != null && s_DirectorMap.TryGetValue(director, out StageController controller))
             {
                 EndPreview(controller);
             }

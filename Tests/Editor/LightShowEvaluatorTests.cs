@@ -254,10 +254,11 @@ namespace Lumiscore.Tests.Editor
                 var fR1 = r1Go.AddComponent<LightFixture>();
                 fR1.Driver = dR1;
 
-                // 1. Sync scene hierarchy into StageShow (with individual light wrapping enabled)
-                StageSceneSync.SyncTopologyFromScene(controller, wrapIndividualLights: true);
-                Assert.AreEqual(1, show.RootNodes.Count);
-                var rootGroup = show.RootNodes[0] as LightGroupNode;
+                // 1. StageController builds runtime RootNodes tree directly from scene hierarchy
+                controller.WrapIndividualLights = true;
+                controller.RebuildSceneTree();
+                Assert.AreEqual(1, controller.RootNodes.Count);
+                var rootGroup = controller.RootNodes[0] as LightGroupNode;
                 Assert.IsNotNull(rootGroup);
                 Assert.AreEqual(2, rootGroup.Children.Count);
 
@@ -276,9 +277,9 @@ namespace Lumiscore.Tests.Editor
 
                 // 2. Auto-generate LightTrack<TModule> for all groups from EvalLightState's IHasLightModule<>
                 StageSceneSync.EnsureTracksForAllGroups(controller);
-                var rootTrack = show.GetTracks(rootGroup)[0] as LightTrack<EvalIntensityModule>;
-                var leftTrack = show.GetTracks(leftWing)[0] as LightTrack<EvalIntensityModule>;
-                var r1Track = show.GetTracks(r1Wrapper)[0] as LightTrack<EvalIntensityModule>;
+                var rootTrack = show.GetTracks(rootGroup.Id)[0] as LightTrack<EvalIntensityModule>;
+                var leftTrack = show.GetTracks(leftWing.Id)[0] as LightTrack<EvalIntensityModule>;
+                var r1Track = show.GetTracks(r1Wrapper.Id)[0] as LightTrack<EvalIntensityModule>;
                 Assert.IsNotNull(rootTrack);
                 Assert.IsNotNull(leftTrack);
                 Assert.IsNotNull(r1Track);
@@ -295,7 +296,7 @@ namespace Lumiscore.Tests.Editor
                 leftClip.Effect = new SiblingRampEffect { BaseValue = 1f, StepPerSibling = 1f };
 
                 // 3. Auto-build nested Timeline GroupTracks + StageTrackAssets
-                StageSceneSync.SyncHierarchyToTimeline(showAsset, timelineAsset);
+                StageSceneSync.SyncHierarchyToTimeline(controller, timelineAsset);
                 int rootGroupTrackCount = 0;
                 GroupTrack timelineAllStage = null;
                 foreach (TrackAsset t in timelineAsset.GetRootTracks())
@@ -321,12 +322,14 @@ namespace Lumiscore.Tests.Editor
                 Assert.AreEqual(2, childGroups, "AllStage GroupTrack should contain LeftWing and RightWing GroupTracks.");
                 Assert.AreEqual(1, childStageTracks, "AllStage GroupTrack should contain 1 EvalIntensityModule StageTrackAsset.");
 
-                // 4. Resync after renaming preserves existing node identity and tracks
+                // 4. Rebuilding scene tree after renaming preserves track lookup by NodeId
                 allStageGo.name = "AllStage_Renamed";
-                StageSceneSync.SyncTopologyFromScene(controller, wrapIndividualLights: true);
-                Assert.AreSame(rootGroup, show.RootNodes[0], "Resync must reuse existing LightGroupNode by NodeId.");
-                Assert.AreEqual("AllStage_Renamed", rootGroup.Name);
-                Assert.AreEqual(1, show.GetTracks(rootGroup).Count, "Existing tracks must survive topology resync.");
+                controller.RebuildSceneTree();
+                var rebuiltRoot = controller.RootNodes[0] as LightGroupNode;
+                Assert.IsNotNull(rebuiltRoot);
+                Assert.AreEqual(rootGroup.Id, rebuiltRoot.Id);
+                Assert.AreEqual("AllStage_Renamed", rebuiltRoot.Name);
+                Assert.AreEqual(1, show.GetTracks(rebuiltRoot.Id).Count, "Existing tracks must remain bound by TargetNodeId.");
 
                 // 5. GatherPreviewProperties -> Preview Evaluate -> ResetPreview cleanup
                 var collector = new MockPropertyCollector();
